@@ -1,0 +1,43 @@
+name: Build webkit2gtk-4.1 with WebRTC
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Arch Linux build environment
+      run: |
+        pacman -Syu --noconfirm
+        pacman -S --noconfirm base-devel git sudo
+
+    - name: Create build user
+      run: |
+        useradd -m builder
+        echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+
+    - name: Copy files to builder
+      run: |
+        cp -r . /home/builder/pkg
+        chown -R builder:builder /home/builder/pkg
+
+    - name: Build package
+      run: |
+        cd /home/builder/pkg
+        sudo -u builder makepkg -si --noconfirm --skippgpcheck
+      timeout-minutes: 360
+
+    - name: Upload package
+      uses: actions/upload-artifact@v4
+      with:
+        name: webkit2gtk-4.1-webrtc
+        path: /home/builder/pkg/*.pkg.tar.zst
+        retention-days: 7
