@@ -10,11 +10,11 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: archlinux:latest
-    
+
     steps:
     - uses: actions/checkout@v4
-    
-    - name: Setup Arch Linux build environment
+
+    - name: Setup build environment
       run: |
         pacman -Syu --noconfirm
         pacman -S --noconfirm base-devel git sudo
@@ -24,15 +24,20 @@ jobs:
         useradd -m builder
         echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
 
-    - name: Copy files to builder
+    - name: Patch PKGBUILD - disable LTO and limit jobs
       run: |
+        # Wyłącz LTO żeby zmniejszyć zużycie RAM podczas linkowania
+        sed -i 's/-flto=auto//' PKGBUILD
+        sed -i 's/LDFLAGS+=.*/LDFLAGS+=" -fuse-ld=lld"/' PKGBUILD
+        # Ogranicz równoległość ninja
+        echo 'export MAKEFLAGS="-j2"' >> PKGBUILD
         cp -r . /home/builder/pkg
         chown -R builder:builder /home/builder/pkg
 
     - name: Build package
       run: |
         cd /home/builder/pkg
-        sudo -u builder makepkg -si --noconfirm --skippgpcheck
+        sudo -u builder bash -c 'MAKEFLAGS="-j2" makepkg -si --noconfirm --skippgpcheck'
       timeout-minutes: 360
 
     - name: Upload package
