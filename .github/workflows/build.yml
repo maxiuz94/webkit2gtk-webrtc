@@ -17,7 +17,7 @@ jobs:
     - name: Setup build environment
       run: |
         pacman -Syu --noconfirm
-        pacman -S --noconfirm base-devel git sudo
+        pacman -S --noconfirm base-devel git sudo python3
 
     - name: Create build user
       run: |
@@ -26,24 +26,17 @@ jobs:
         cp -r . /home/builder/pkg
         chown -R builder:builder /home/builder/pkg
 
+    - name: Patch makepkg.conf and PKGBUILD
+      run: |
+        # Usuń -flto z globalnych flag kompilatora Arch
+        sed -i 's/ -flto=auto//' /etc/makepkg.conf
+        sed -i 's/ -flto//' /etc/makepkg.conf
+        cat /etc/makepkg.conf | grep -E "CFLAGS|LDFLAGS"
+
     - name: Build package
       run: |
         cd /home/builder/pkg
-        sudo -u builder bash -c '
-          # Najpierw tylko pobierz i rozpakuj źródła
-          makepkg --nobuild --noconfirm --skippgpcheck
-
-          # Usuń -flto ze wszystkich plików cmake w źródłach webkit
-          find src/webkitgtk-*/Source -name "*.cmake" -o -name "CMakeLists.txt" | \
-            xargs grep -l "flto" | \
-            xargs sed -i "s/-flto=auto//g; s/-flto//g"
-
-          # Usuń też z globalnych flag
-          sed -i "s/-flto=auto//g; s/-flto//g" /etc/makepkg.conf
-
-          # Teraz skompiluj bez ponownego pobierania
-          MAKEFLAGS="-j2" makepkg -si --noconfirm --skippgpcheck --noextract
-        '
+        sudo -u builder bash -c 'MAKEFLAGS="-j2" makepkg -si --noconfirm --skippgpcheck'
       timeout-minutes: 360
 
     - name: Upload package
