@@ -29,11 +29,20 @@ jobs:
     - name: Build package
       run: |
         cd /home/builder/pkg
-        # Usuń -flto z globalnych flag Arch Linux
         sudo -u builder bash -c '
-          sed -i "s/-flto=auto//" /etc/makepkg.conf
-          sed -i "s/-flto//" /etc/makepkg.conf
-          MAKEFLAGS="-j2" makepkg -si --noconfirm --skippgpcheck
+          # Najpierw tylko pobierz i rozpakuj źródła
+          makepkg --nobuild --noconfirm --skippgpcheck
+
+          # Usuń -flto ze wszystkich plików cmake w źródłach webkit
+          find src/webkitgtk-*/Source -name "*.cmake" -o -name "CMakeLists.txt" | \
+            xargs grep -l "flto" | \
+            xargs sed -i "s/-flto=auto//g; s/-flto//g"
+
+          # Usuń też z globalnych flag
+          sed -i "s/-flto=auto//g; s/-flto//g" /etc/makepkg.conf
+
+          # Teraz skompiluj bez ponownego pobierania
+          MAKEFLAGS="-j2" makepkg -si --noconfirm --skippgpcheck --noextract
         '
       timeout-minutes: 360
 
