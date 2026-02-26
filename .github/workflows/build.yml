@@ -8,40 +8,39 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container:
-      image: archlinux:latest
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: Setup build environment
+    - name: Add swap space
       run: |
-        pacman -Syu --noconfirm
-        pacman -S --noconfirm base-devel git sudo python3
+        sudo fallocate -l 16G /swapfile
+        sudo chmod 600 /swapfile
+        sudo mkswap /swapfile
+        sudo swapon /swapfile
+        free -h
 
-    - name: Create build user
+    - name: Install Arch Linux container tools
       run: |
-        useradd -m builder
-        echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-        cp -r . /home/builder/pkg
-        chown -R builder:builder /home/builder/pkg
+        sudo apt-get install -y systemd-container
 
-    - name: Patch makepkg.conf and PKGBUILD
+    - name: Build in Docker Arch container
       run: |
-        # Usuń -flto z globalnych flag kompilatora Arch
-        sed -i 's/ -flto=auto//' /etc/makepkg.conf
-        sed -i 's/ -flto//' /etc/makepkg.conf
-        cat /etc/makepkg.conf | grep -E "CFLAGS|LDFLAGS"
-
-    - name: Build package
-      run: |
-        cd /home/builder/pkg
-        sudo -u builder bash -c 'MAKEFLAGS="-j2" makepkg -si --noconfirm --skippgpcheck'
-      timeout-minutes: 360
+        docker run --rm -v $PWD:/pkg archlinux:latest bash -c '
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm base-devel git sudo
+          useradd -m builder
+          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+          cp -r /pkg /home/builder/pkg
+          chown -R builder:builder /home/builder/pkg
+          cd /home/builder/pkg
+          sudo -u builder bash -c "MAKEFLAGS=-j4 makepkg -si --noconfirm --skippgpcheck"
+          cp /home/builder/pkg/*.pkg.tar.zst /pkg/ 2>/dev/null || true
+        '
 
     - name: Upload package
       uses: actions/upload-artifact@v4
       with:
         name: webkit2gtk-4.1-webrtc
-        path: /home/builder/pkg/*.pkg.tar.zst
+        path: "*.pkg.tar.zst"
         retention-days: 7
